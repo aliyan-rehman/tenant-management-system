@@ -174,9 +174,22 @@ Firestore:
 **Issue: "API key not valid"**
 - Solution: Verify you replaced the API key in `auth_service.dart` with your actual Firebase Web API Key
 
-## License
+  ## License
 
-This project is open source and available under the [MIT License](LICENSE).
+  This project is for **educational and learning purposes only**.
+
+  **Permitted:**
+   - View and study the code
+   - Use for personal learning
+   - Fork for practice
+
+  **Not Permitted:**
+   - Commercial use
+   - Publishing or redistribution
+   - Production use
+   - Selling or monetizing
+
+  Copyright (c) 2025 Aliyan Rehman. All rights reserved.
 
 ## Author
 
