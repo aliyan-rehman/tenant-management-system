@@ -1,0 +1,154 @@
+import 'dart:convert';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+
+class AuthService {
+  static const String c_users = "users";
+  static const String c_landlords = "landlords";
+
+  static const String u_name = "name";
+  static const String u_email = "email";
+  static const String u_houseNo = "houseNo";
+  static const String u_role = "role";
+  static const String u_createdAt = "createdAt";
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  // REPLACE WITH YOUR FIREBASE WEB API KEY
+  // Get it from: Firebase Console → Project Settings → Web API Key
+  static const String _apiKey = "YOUR_FIREBASE_WEB_API_KEY_HERE";
+
+  //Register Landlord
+  Future registerUser({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    final userCredential = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
+
+    final uid = userCredential.user!.uid;
+
+    await _firestore.collection(c_users).doc(uid).set({
+      u_name: name,
+      u_email: email,
+      u_role: "landlord",
+      u_createdAt: FieldValue.serverTimestamp(),
+    });
+
+    await _firestore.collection(c_landlords).doc(uid).set({
+      u_name: name,
+      u_createdAt: FieldValue.serverTimestamp(),
+    });
+
+    return userCredential;
+  }
+
+  Future<Map<String, dynamic>?> createTenantUser({
+    required String tenantName,
+    required String houseNo,
+    required String landlordId,
+  }) async {
+    try {
+      String email =
+          houseNo
+              .toLowerCase()
+              .replaceAll(' ', '')
+              .replaceAll('#', '')
+              .replaceAll('house', 'house') +
+          '@tenant.app';
+
+      String password = "123456789";
+
+      final response = await http.post(
+        Uri.parse(
+          'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$_apiKey',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+          'returnSecureToken': false,
+        })
+      );
+
+      final responseData = jsonDecode(response.body);
+
+      if (response.statusCode != 200) {
+        print("Error: ${responseData['error']['message']}");
+        return null;
+      }
+
+      final String uid = responseData['localId'];
+
+      await _firestore.collection(c_users).doc(uid).set({
+        u_name: tenantName,
+        u_email: email,
+        u_role: "tenant",
+        u_houseNo: houseNo,
+        'landlordId': landlordId,
+        u_createdAt: FieldValue.serverTimestamp(),
+      });
+
+      return {'email': email, 'password': password};
+    } catch (e) {
+      print("Error creating tenant user: $e");
+      return {};
+    }
+  }
+
+  Future loginUser({required String email, required String password}) async {
+    await _auth.signInWithEmailAndPassword(email: email, password: password);
+    final uid = _auth.currentUser!.uid;
+    final userDoc = await _firestore.collection(c_users).doc(uid).get();
+    final userRole = userDoc.data()?[u_role] as String;
+    return userRole;
+  }
+
+  Future<Map<String, dynamic>?> getCurrentUserData() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return null;
+    final doc = await _firestore.collection('users').doc(uid).get();
+    return doc.data();
+  }
+
+  Future<bool> deleteTenantUser(String houseNo, String landlordId) async {
+    try {
+      print("Looking for tenant user document...");
+
+      final usersSnapshot = await _firestore
+          .collection(c_users)
+          .where('houseNo', isEqualTo: houseNo)
+          .where('landlordId', isEqualTo: landlordId)
+          .where('role', isEqualTo: 'tenant')
+          .limit(1)
+          .get();
+
+      if (usersSnapshot.docs.isEmpty) {
+        print("Tenant user document not found");
+        return true;
+      }
+
+      await usersSnapshot.docs.first.reference.delete();
+      print("Deleted tenant user document");
+
+      return true;
+    } catch (e) {
+      print("Error deleting tenant user: $e");
+      return false;
+    }
+  }
+
+  Future signOut() {
+    return _auth.signOut();
+  }
+
+  String? getCurrentUserId() {
+    return _auth.currentUser!.uid;
+  }
+}
